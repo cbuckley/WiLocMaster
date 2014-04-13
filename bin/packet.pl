@@ -67,9 +67,12 @@ while (1) {
 
 sub generateSummary	{
 	my ($mac) = @_;
-	my $sql = "SELECT * FROM ticks WHERE clMac = ? and tseen BETWEEN NOW() - INTERVAL 30 second AND NOW()";
+	my $sql = "SELECT * FROM ticks WHERE clMac = ? and tseen BETWEEN NOW() - INTERVAL 10 second AND NOW() GROUP BY coId";
 	my $sth = $dbh->prepare($sql);
 	$sth->execute($mac);
 	my $res = $sth->fetchall_hashref('tId');
-	print Dumper($res);		
+	my %summaries;
+	foreach my $key (keys $res)	{
+		print Dumper($res->{$key});
+	}
 }

@@ -26,6 +26,7 @@ my $controllers = updateControllers();
 while (1) {
 	my $frame = $stomp->receive_frame;
 	my $heartbeat = $json->decode($frame->body );
+	$controllers = updateControllers();
 	if($controllers->{$heartbeat->{controller}})	{
 		print "Controller found\n";
 		my $sql = "UPDATE controllers SET coSeen = NOW() WHERE coId = ?";
@@ -38,7 +39,6 @@ while (1) {
 		my $sql = "INSERT INTO controllers (`coId`, `coSeen`, `coActive`) VALUES (?,NOW(), ?)";
 		my $sth = $dbh->prepare($sql);
 		$sth->execute($heartbeat->{controller}, 0);
-		$controllers = updateControllers();
 	}
 	my $jsonstr = $json->encode($controllers->{$heartbeat->{controller}});
 	$stomp->send({ destination => '/queue/web.heartbeats',body => $jsonstr });
