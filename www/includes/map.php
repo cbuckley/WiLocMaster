@@ -6,26 +6,19 @@
 <script type="text/javascript">
 var redCircle;
 var redpi;
-function initialize() {
+var map;
+var image;
+$(document).ready(function()    {
 	var mapOptions = {
         	center: new google.maps.LatLng(52.8129216,-2.0818326),
 	        zoom: 20
         };
-	var map = new google.maps.Map(document.getElementById("map-canvas"), mapOptions);
-	var image = 'img/picon.png';
-	var image = new google.maps.MarkerImage("img/picon.png",
+	map = new google.maps.Map(document.getElementById("map-canvas"), mapOptions);
+	image = new google.maps.MarkerImage("img/picon.png",
 		null, 
 	        new google.maps.Point(0,0),
 	        new google.maps.Point(22, 25)
 	);
-	var redpiloc = new google.maps.LatLng(52.812881,-2.081955);
-	redpi = new google.maps.Marker({
-		position: redpiloc,
-		point:(22,42),
-		map: map,
-		icon: image,
-		draggable:true,
-	});
 	
 	/*circleOptions = {
 		strokeColor: '#FF0000',
@@ -39,9 +32,6 @@ function initialize() {
 		radius: 10
 	};
 	redCircle = new google.maps.Circle(circleOptions);*/
-	}
-	google.maps.event.addDomListener(window, 'load', initialize);
-	$(document).ready(function()	{
 		$("#clientspane").hide();	
 	
 		$("#clientsbutton").click(function()	{
@@ -68,6 +58,9 @@ function initialize() {
 		$.each(controllers, function(k, v)      {
         		newController(v);
 		});
+		$.each(clients, function(k,v)   {
+                	newClient(v);
+	        });
 		setInterval("updateControllers()", 5000);
 	});
 
@@ -90,29 +83,58 @@ function startListening() {
 var controllers = 
 <?php
 $con = mysqli_connect("localhost","wiloc","q9MF2Jbed9S7DPmP","wiloc");
-$result = mysqli_query($con,"SELECT *, coSeen between (NOW() - interval 40 second) and NOW() as beating FROM controllers") or die("Error: ".mysqli_error($con));;
+$result = mysqli_query($con,"SELECT *, coSeen between (NOW() - interval 40 second) and NOW() as beating FROM controllers INNER JOIN controllerLocs on controllers.clId = controllerLocs.clId") or die("Error: ".mysqli_error($con));;
 $controllers = Array();
 while($row = mysqli_fetch_array($result))       {
         $controllers[$row['coId']] = $row;
 }
         echo json_encode($controllers);
-?>
+?>;
+var clients =
+<?php
+$result = mysqli_query($con,"SELECT * FROM clients") or die("Error: ".mysqli_error($con));
+$clients= Array();
+while($row = mysqli_fetch_array($result))       {
+        $clients[$row['clMac']] = $row;
+}
+        echo json_encode($clients);
+?>;
+
 
 var heartbeats = function(message)	{
 	controller = JSON.parse(message.body);
 	if((controller.coId in controllers))	{
 		controller.jseen = (new Date).getTime();
-		controller.beating = 1;
 		if(controllers[controller.coId].beating == 0 || controllers[controller.coId].timing == 1)	{
 			updateControllerStatus(controller.coId, "online");
 		}
+		controller.beating = 1;
 		controllers[controller.coId] = controller;
 	}
 	else	{
+		controller.beating = 1;
 		newController(controller);
+	}
+	if($('*[data-controller="'+controller.coId+'"]').find("#name").html() != controller.coName)	{
+		$('*[data-controller="'+controller.coId+'"]').find("#name").html(controller.coName);
 	}
 	$('*[data-controller="'+controller.coId+'"]').find('#ping').fadeIn(500).fadeOut(500);
 }
+var summaryPackets = function(message)      {
+        curClient = JSON.parse(message.body);
+        if((curClient.clMac in clients))    {
+                if(curClient.clActive == 1)     {
+
+                }
+                else    {
+
+                }
+        }
+        else    {
+                newClient(curClient);
+        }
+}
+
 function updateControllers()	{
 	$.each(controllers, function(k, v)      {
 		var warntime = (new Date).getTime() - 25000;
@@ -162,13 +184,31 @@ function newController(c)	{
 		}
 	}
 	controllers[c.coId] = c;
+	controllers[c.coId].marker = new google.maps.Marker({
+                position: new google.maps.LatLng(c.clLat,c.clLon),
+                point:(22,42),
+                map: map,
+                icon: image,
+                draggable:true,
+        });
 	var row = $("<tr></tr>").addClass(beating).attr("data-controller", c.coId)
 	.append(Array(
-		$("<td></td>").html(c.coName),
+		$("<td></td>").html(c.coName).attr("id", "name"),
 		$("<td></td>").html(status).attr("id", "status"),
 		$("<td></td>").html($("<span></span>").attr("id", "ping").hide().addClass("glyphicon glyphicon-bell"))
 	));
 	$("#controllers").append(row);
+}
+function newClient(client)      {
+        var dest;
+        $("#activeClients").append(
+        	$("<tr>></tr>").append(Array(
+           		$("<td>></td>").html(client.cName),
+			$("<td>></td>").html(client.cStatus),
+			$("<td>></td>").html(client.cMac)
+		))
+	);
+        clients[client.clMac] = client;
 }
 
 </script>
@@ -192,7 +232,7 @@ function newController(c)	{
 	</div>
 	<div id="clientspane">
 	<h2>Clients</h2>
-        <table class="table table-striped">
+        <table id="activeClients" class="table table-striped">
                 <tr>
                         <th>Client</th>
                         <th>Status</th>
