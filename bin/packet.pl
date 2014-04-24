@@ -4,6 +4,11 @@ use Net::Stomp;
 use Data::Dumper;
 use JSON;
 use Switch;
+use Math::Trig;
+use POSIX qw(strftime);
+use Math::Vector::Real;
+use Math::Complex;
+Math::Complex::display_format('cartesian');
 use strict;
 $| = 1;
 
@@ -76,32 +81,78 @@ while (1) {
 	$stomp->ack( { frame => $frame } );
 }
 
+sub toRad	{
+	my ($val) = @_;
+	$val * pi / 180;
+}
+sub toDeg       {
+        my ($val) = @_;
+        $val * 180 / pi;
+}
 
 sub generateSummary	{
-	my ($mac, $macAddr) = @_;
-	my ($sql, $sth, $result);
+        my ($mac, $macAddr) = @_;
+        my ($sql, $sth, $result);
+	my $date = strftime "%m/%d/%Y %H:%I:%S", localtime;
+	my $detail = "$date - Summarised $macAddr (";
+	
 	print "Begin Trilateration\n";
 	foreach my $key (keys $mac)	{
 		$sql = "SELECT * FROM controllerLocs where coId = ? ORDER BY clTimestamp DESC LIMIT 1";
 		$sth = $dbh->prepare($sql);
 		$sth->execute($key);
 		$result = $sth->fetchrow_hashref();	
-		$mac->{$key}{lat} =  $result->{clLat};
-		$mac->{$key}{lon} =  $result->{clLon};
+		$mac->{$key}{lat} = $result->{clLat};
+		$mac->{$key}{lon} = $result->{clLon};
+		#print "Controller $key is " . $mac->{$key}{lat}."and " . $mac->{$key}{lon} . "\n";
 		$mac->{$key}{distance} = 7 if $mac->{$key}{SSI} > -55;
-		$mac->{$key}{distance} = 6 if $mac->{$key}{SSI} < -55;
-		$mac->{$key}{distance} = 5 if $mac->{$key}{SSI} < -60;
-		$mac->{$key}{distance} = 4 if $mac->{$key}{SSI} < -65;
-		$mac->{$key}{distance} = 3 if $mac->{$key}{SSI} < -70;
-		$mac->{$key}{distance} = 2 if $mac->{$key}{SSI} < -80;
-		$mac->{$key}{distance} = 1 if $mac->{$key}{SSI} < -90;
-		$mac->{$key}{distance} *= 3;
+		$mac->{$key}{distance} = 6 if $mac->{$key}{SSI} <= -55;
+		$mac->{$key}{distance} = 5 if $mac->{$key}{SSI} <= -60;
+		$mac->{$key}{distance} = 4 if $mac->{$key}{SSI} <= -65;
+		$mac->{$key}{distance} = 3 if $mac->{$key}{SSI} <= -70;
+		$mac->{$key}{distance} = 2 if $mac->{$key}{SSI} <= -80;
+		$mac->{$key}{distance} = 1 if $mac->{$key}{SSI} <= -90;
+		$mac->{$key}{distance} /= 1000;
+		$detail .= "$key = ".$mac->{$key}{distance} . " ";
 	}
+	$detail .=")";
 	my @keys = keys $mac;
-	my $S = ($mac->{$keys[2]}{lat} ** 2 - $mac->{$keys[1]}{lat} ** 2 + $mac->{$keys[2]}{lon} ** 2 - $mac->{$keys[1]}{lon} ** 2 + $mac->{$keys[1]}{distance} ** 2 - $mac->{$keys[2]}{distance} ** 2) / 2.0;
-	my $T = ($mac->{$keys[0]}{lat} ** 2 - $mac->{$keys[1]}{lat} ** 2 + $mac->{$keys[0]}{lon} ** 2 - $mac->{$keys[1]}{lon} ** 2 + $mac->{$keys[1]}{distance} **2 - $mac->{$keys[0]}{distance} **2) / 2.0;
-	my $y = (($T * ($mac->{$keys[1]}{lat} - $mac->{$keys[2]}{lat})) - ($S * ($mac->{$keys[1]}{lat} - $mac->{$keys[0]}{lat}))) / ((($mac->{$keys[0]}{lon} - $mac->{$keys[1]}{lon}) * ($mac->{$keys[1]}{lat} - $mac->{$keys[2]}{lat})) - (($mac->{$keys[2]}{lon} - $mac->{$keys[1]}{lon}) * ($mac->{$keys[1]}{lat} - $mac->{$keys[0]}{lat})));
-	my $x = (($y * ($mac->{$keys[0]}{lon} - $mac->{$keys[1]}{lon})) - $T) / ($mac->{$keys[1]}{lat} - $mac->{$keys[0]}{lat});
+	my $earthR = 6371;
+	my $xA = $earthR *(cos(toRad($mac->{$keys[0]}{lat})) * cos(toRad($mac->{$keys[0]}{lon})));
+	my $yA = $earthR *(cos(toRad($mac->{$keys[0]}{lat})) * sin(toRad($mac->{$keys[0]}{lon})));
+	my $zA = $earthR *(sin(toRad($mac->{$keys[0]}{lat})));
+
+        my $xB = $earthR *(cos(toRad($mac->{$keys[1]}{lat})) * cos(toRad($mac->{$keys[1]}{lon})));
+        my $yB = $earthR *(cos(toRad($mac->{$keys[1]}{lat})) * sin(toRad($mac->{$keys[1]}{lon})));
+        my $zB = $earthR *(sin(toRad($mac->{$keys[1]}{lat})));
+
+        my $xC = $earthR *(cos(toRad($mac->{$keys[2]}{lat})) * cos(toRad($mac->{$keys[2]}{lon})));
+        my $yC = $earthR *(cos(toRad($mac->{$keys[2]}{lat})) * sin(toRad($mac->{$keys[2]}{lon})));
+        my $zC = $earthR *(sin(toRad($mac->{$keys[2]}{lat})));
+
+	my $P1 = V($xA,$yA,$zA);
+	my $P2 = V($xB,$yB,$zB);
+	my $P3 = V($xC,$yC,$zC);	
+        my $a = $P2 - $P1;
+	my $b = abs($P2 - $P1);
+	my $ex = $a / $b;
+	my $c = $P3 - $P1;
+        my $i = $ex * $a;
+	my $intermediate = ($P3 - $P1) - ($ex * $i);
+	my $ey = $intermediate / abs($intermediate);
+      	my $ez = $ex x $ey;
+	my $d = abs($P2 - $P1);
+	my $j = $ey * ($P3 - $P1);
+	my $x = ($mac->{$keys[0]}{distance} ** 2 - $mac->{$keys[1]}{distance} ** 2 + $d ** 2)/(2*$d);
+
+	my $y = (($mac->{$keys[0]}{distance} **2 - $mac->{$keys[2]}{distance} ** 2 + $i ** 2 + $j ** 2)/(2*$j)) - (($i/$j)*$x);
+	my $z = sqrt($mac->{$keys[0]}{distance} ** 2 - $x ** 2 - $y ** 2);
+	my $z = sprintf("%.17f", $z);
+	my $triPt = $P1 + ($ex * $x) + ($ey * $y) + ($ez * $z);
+	my $lat = toDeg(asin($triPt->[2] / $earthR));
+	my $lon = toDeg(atan2($triPt->[1],$triPt->[0]));
+	my $x = $lat;
+	my $y = $lon;
 	$sql = "INSERT INTO `wiloc`.`clientSummary` (`clMac`, `csGenerated`, `csLat`, `csLon`) VALUES (?, NOW(), ?, ?)";
 	$sth = $dbh->prepare($sql);
 	$sth->execute($macAddr, $x, $y);
@@ -113,8 +164,6 @@ sub generateSummary	{
 		$sql = "INSERT INTO `wiloc`.`clientTicks` (`csId`, `tId`) VALUES (?, ?)";
 		$sth = $dbh->prepare($sql);
 		$sth->execute($csid, $mac->{$key}{tId});
-		$mac->{$key}{lat} = $result->{clLat};
-                $mac->{$key}{lon} = $result->{clLon};
 	}
 	print "Location: $x, $y\n";
 	my $summary;
@@ -123,5 +172,7 @@ sub generateSummary	{
 	$summary->{clLon} = $y;
 	$summary->{controllers} = $mac;
 	my $jsonstr = $json->encode($summary);
+	$detail .= " Estimated Location: ".$summary->{clLat} .",".$summary->{clLon};
         $stomp->send({ destination => '/topic/web.summary',body => $jsonstr });
+	$stomp->send({ destination => '/topic/web.logs',body => $detail });
 }
