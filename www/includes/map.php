@@ -2,12 +2,15 @@
       #map-canvas { height:800px; width:800px;  }
     </style>
 <script type="text/javascript" src="js/stomp.js"></script>
+<script type="text/javascript" src="jquery/jquery.jeditable.js"></script>
+<script type="text/javascript" src="js/vector.js"></script>
 <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB5CJ_M-2TJtQVx6CmxxZM1AQ0Tp2FzEdI&sensor=false"></script>
 <script type="text/javascript">
 var redCircle;
 var redpi;
 var map;
 var image;
+var trilaterating;
 $(document).ready(function()    {
 	var mapOptions = {
         	center: new google.maps.LatLng(52.8129216,-2.0818326),
@@ -20,18 +23,6 @@ $(document).ready(function()    {
 	        new google.maps.Point(22, 25)
 	);
 	
-	/*circleOptions = {
-		strokeColor: '#FF0000',
-		strokeOpacity: 0.2,
-		strokeWeight: 2,
-		fillColor: '#FF0000',
-		fillOpacity: 0.15,
-		map: map,
-		draggable:true,
-		center:redpiloc,
-		radius: 10
-	};
-	redCircle = new google.maps.Circle(circleOptions);*/
 		$("#clientspane").hide();	
 	
 		$("#clientsbutton").click(function()	{
@@ -62,6 +53,7 @@ $(document).ready(function()    {
                 	newClient(v);
 	        });
 		setInterval("updateControllers()", 5000);
+		setInterval("updateClients()", 5000);
 	});
 
 var client, url;
@@ -77,7 +69,8 @@ client.debug = function(str) {
 function startListening() {
 	if (!listening) {
 		listening = true;
-		client.subscribe('/queue/web.heartbeats',heartbeats);
+		client.subscribe('/topic/web.heartbeats',heartbeats);
+		client.subscribe('/topic/web.summary',summaryPackets);
 	}
 }
 var controllers = 
@@ -92,14 +85,13 @@ while($row = mysqli_fetch_array($result))       {
 ?>;
 var clients =
 <?php
-$result = mysqli_query($con,"SELECT * FROM clients") or die("Error: ".mysqli_error($con));
+$result = mysqli_query($con,"SELECT * FROM clients where clActive = 1") or die("Error: ".mysqli_error($con));
 $clients= Array();
 while($row = mysqli_fetch_array($result))       {
         $clients[$row['clMac']] = $row;
 }
         echo json_encode($clients);
 ?>;
-
 
 var heartbeats = function(message)	{
 	controller = JSON.parse(message.body);
@@ -109,6 +101,8 @@ var heartbeats = function(message)	{
 			updateControllerStatus(controller.coId, "online");
 		}
 		controller.beating = 1;
+		controller.marker = controllers[controller.coId].marker;
+		controller.tricircle = controllers[controller.coId].tricircle;
 		controllers[controller.coId] = controller;
 	}
 	else	{
@@ -123,18 +117,108 @@ var heartbeats = function(message)	{
 var summaryPackets = function(message)      {
         curClient = JSON.parse(message.body);
         if((curClient.clMac in clients))    {
-                if(curClient.clActive == 1)     {
-
-                }
-                else    {
-
-                }
+		loc = getTrilateration(curClient.controllers['fnk8rjf43e'],curClient.controllers['lrhcngawjz'],curClient.controllers['Mp2H715b45']);
+		if (typeof clients[curClient.clMac].marker == "undefined") {
+			clients[curClient.clMac].marker = new google.maps.Marker({
+				position: new google.maps.LatLng(loc.x, loc.y),
+				map: map,
+				title:curClient.clMac
+			});
+		}
+		else	{
+			clients[curClient.clMac].marker.setPosition(new google.maps.LatLng(loc.x, loc.y));
+			clients[curClient.clMac].marker.setMap(map);
+		}
         }
         else    {
                 newClient(curClient);
         }
+	clients[curClient.clMac].beating = 1;
+        clients[curClient.clMac].jseen = (new Date).getTime();
+	updateClientStatus(curClient.clMac, "online");
+	if(curClient.clMac == trilaterating)	{
+		trilaterate(curClient);
+	}
 }
+function trilaterate(client)	{
+	$.each(client.controllers, function(k,v)	{
+		parseFloat(v.lon);
+		client.controllers.lon = parseFloat(client.controllers.lon);
+		parseFloat(client.controllers.distance);
+		if (typeof controllers[k].tricircle == "undefined") {
+			controllers[k].tricircle = new google.maps.Circle({
+				map: map,
+				radius: v.distance * 1000,
+				fillColor: '#AA0000',
+			});
+			controllers[k].tricircle.bindTo('center', controllers[k].marker, 'position');
+		}
+		else	{
+			controllers[k].tricircle.setRadius(v.distance *1000);
+			controllers[k].tricircle.setMap(map);
+		}
+	});
+}
+function clearTrilaterate()	{
+	$.each(controllers, function(k,v)        {
+		if (typeof controllers[k].tricircle != "undefined") {
+			controllers[k].tricircle.setMap(null);
+		}
+	});
+}
+function getTrilateration(position1, position2, position3) {
+	earthR = 6371;
+	//convert to cartesian format from ECEF
+	xA = earthR *(Math.cos(Math.radians(position1.lat)) * Math.cos(Math.radians(position1.lon)));
+	yA = earthR *(Math.cos(Math.radians(position1.lat)) * Math.sin(Math.radians(position1.lon)));
+	zA = earthR *(Math.sin(Math.radians(position1.lat)));
 
+	xB = earthR *(Math.cos(Math.radians(position2.lat)) * Math.cos(Math.radians(position2.lon)));
+	yB = earthR *(Math.cos(Math.radians(position2.lat)) * Math.sin(Math.radians(position2.lon)));
+	zB = earthR *(Math.sin(Math.radians(position2.lat)));
+
+	xC = earthR *(Math.cos(Math.radians(position3.lat)) * Math.cos(Math.radians(position3.lon)));
+	yC = earthR *(Math.cos(Math.radians(position3.lat)) * Math.sin(Math.radians(position3.lon)));
+	zC = earthR *(Math.sin(Math.radians(position3.lat)));
+
+	P1 = new Vector(xA, yA, zA);
+	P2 = new Vector(xB, yB, zB);
+	P3 = new Vector(xC, yC, zC);
+    
+	var a = P2.subtract(P1);
+    	var b = P2.subtract(P1).length();
+	var ex = a.divide(b);
+ 	var c = P3.subtract(P1)
+	var i = ex.dot(c);
+	var intermediate = (P3.subtract(P1)).subtract(ex.multiply(i));
+	var ey = intermediate.divide(intermediate.length());	
+	var ez = ex.cross(ey);
+	var d = P2.subtract(P1).length();
+	var j = ey.dot(P3.subtract(P1));
+	
+	x = (Math.pow(position1.distance,2) - Math.pow(position2.distance,2) + Math.pow(d,2))/(2*d);
+	y = ((Math.pow(position1.distance,2) - Math.pow(position3.distance,2) + Math.pow(i,2) + Math.pow(j,2))/(2*j)) - ((i/j)*x);
+	z = Math.sqrt(Math.pow(position1.distance,2) - Math.pow(x,2) - Math.pow(y,2));
+
+	var triPt = P1.add(ex.multiply(x)).add(ey.multiply(y)).add(ez.multiply(z));
+	lat = Math.toDeg(Math.asin(triPt.z / earthR));
+	lon = Math.toDeg(Math.atan2(triPt.y,triPt.x));
+	var obj = {
+		x:lat,
+		y:lon
+	}	
+	return obj;
+}
+if (typeof(Math.radians) === "undefined") {
+  Math.radians = function(num) {
+    return num * Math.PI / 180;
+  }
+}
+if (typeof(Math.toDeg) === "undefined") {
+  Math.toDeg = function(num) {
+    return num * 180 / Math.PI;
+  }
+}
 function updateControllers()	{
 	$.each(controllers, function(k, v)      {
 		var warntime = (new Date).getTime() - 25000;
@@ -150,6 +234,22 @@ function updateControllers()	{
 		}
 	});	
 }
+function updateClients()    {
+        $.each(clients, function(k, v)      {
+                var warntime = (new Date).getTime() - 30000;
+                var deadtime = (new Date).getTime() - 120000;
+                if(v.beating == 1)      {
+                        if(v.jseen < deadtime)  {
+                                updateClientStatus(v.clMac, "waiting");
+                        }
+                        else if(v.jseen < warntime)     {
+                                updateClientStatus(v.clMac, "timing");
+                                v.timing = true;
+                        }
+                }
+        });
+}
+
 function updateControllerStatus(controller, stat)	{
 	switch (stat)	{
 	case "online":
@@ -164,6 +264,22 @@ function updateControllerStatus(controller, stat)	{
 		controllers[controller].beating = 0;
 	break;
 	}
+}
+function updateClientStatus(client, stat)       {
+        switch (stat)   {
+        case "online":
+		$('#activeClients [data-clMac="'+client+'"]').find("#status").html("Seen");
+        break;
+        case "timing":
+		$('#activeClients [data-clMac="'+client+'"]').find("#status").html("Timing");
+        break;
+        case "waiting":
+		$('#activeClients [data-clMac="'+client+'"]').find("#status").html("Waiting");
+        	if (typeof clients[client].marker != "undefined") {
+			clients[client].marker.setMap(null);	
+		}
+	break;
+        }
 }
 function newController(c)	{
 	var beating,status;
@@ -195,19 +311,32 @@ function newController(c)	{
 	.append(Array(
 		$("<td></td>").html(c.coName).attr("id", "name"),
 		$("<td></td>").html(status).attr("id", "status"),
-		$("<td></td>").html($("<span></span>").attr("id", "ping").hide().addClass("glyphicon glyphicon-bell"))
+		$("<td></td>").html($("<span></span>").attr("id", "ping").hide().addClass("glyphicon glyphicon-record"))
 	));
 	$("#controllers").append(row);
 }
 function newClient(client)      {
         var dest;
         $("#activeClients").append(
-        	$("<tr>></tr>").append(Array(
-           		$("<td>></td>").html(client.cName),
-			$("<td>></td>").html(client.cStatus),
-			$("<td>></td>").html(client.cMac)
-		))
-	);
+        	$("<tr></tr>").attr("data-clMac", client.clMac).append(Array(
+           		$("<td></td>").html(client.clName).attr("id", "cMac_"+client.clMac).editable("/ajax/editname.php", {
+                                                indicator : "<img src='img/indicator.gif'>",
+                                                tooltip   : "Click to Add",
+                                                style  : "inherit"
+                                         })
+,
+			$("<td></td>").html(client.clStatus).attr("id", "status"),
+			$("<td></td>").html(client.clMac),
+			$("<td></td>").html($("<span></span>").attr("id", "curTrack").hide().addClass("glyphicon glyphicon-ok"))
+		)).click(function()	{
+			if(typeof(trilaterating) != "undefined")	{
+				$('#activeClients [data-clMac="'+trilaterating+'"]').find("#curTrack").hide();	
+			}
+			$('#activeClients [data-clMac="'+client.clMac+'"]').find("#curTrack").show();	
+			trilaterating = client.clMac;
+			clearTrilaterate();	
+		}));
+	updateClientStatus(client.clMac, "waiting");
         clients[client.clMac] = client;
 }
 
@@ -225,7 +354,7 @@ function newClient(client)      {
 		<tr>
 			<th>Controllers</th>
 			<th>Status</th>
-			<th></th>
+			<th>Heartbeat</th>
 		</tr>
 		
 	</table>
@@ -237,16 +366,7 @@ function newClient(client)      {
                         <th>Client</th>
                         <th>Status</th>
                         <th>MAC</th>
-                </tr>
-                <tr>
-                        <td>Chris iPhone</td>
-                        <td>Active</td>
-                        <td>00:00:00:00:00:00</td>
-                </tr>
-		<tr>
-                        <td>Chris MacBook</td>
-                        <td class="warning">Timing</td>
-                        <td>00:00:00:00:00:00</td>
+			<th>Tracking</th>
                 </tr>
         </table>
 	</div>

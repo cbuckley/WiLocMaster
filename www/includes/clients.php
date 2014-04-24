@@ -2,19 +2,25 @@
 <script type="text/javascript" src="jquery/jquery.jeditable.js"></script>
 <script>
 $(document).ready(function()	{
-	$( "#trackinglist" ).droppable({
+	$( "#trackinglist, #clientslist" ).droppable({
 		drop: function( event, ui ) {
 			$( this ).find( ".placeholder" ).remove();
 	//		$( "<li></li>" ).text( ui.draggable.text() ).appendTo( this );
 			$(this).append(ui.draggable);
-			console.log("Dropped");
-			console.log(ui);
-			console.log(event);
-		}
-	}).sortable({
-		items: "li:not(.placeholder)",
-		sort: function() {
-			$( this ).removeClass( "ui-state-default" );
+			thismac = $(ui.draggable).find("#clDrag").attr("data-clmac");
+			target = $(event.target).attr("id");
+			var tracking;
+			if(target == "trackinglist")	{
+				tracking = 1;
+			}
+			else if(target == "clientslist")	{
+				tracking = 0;
+			}
+
+			$.getJSON( "ajax/changetracking.php", {
+				tracking:tracking,
+				clmac:thismac
+			});
 		}
 	});
 	$.each(clients, function(k,v)	{
@@ -35,7 +41,7 @@ client.debug = function(str) {
 function startListening() {
         if (!listening) {
                 listening = true;
-                client.subscribe('/queue/web.ticks',ticks);
+                client.subscribe('/topic/web.ticks',ticks);
         }
 }
 
@@ -61,7 +67,6 @@ var ticks = function(message)      {
 		}
         }
         else    {
-		console.log("new Client");
                 newClient(curClient);
         }
 }
@@ -76,7 +81,7 @@ function newClient(client)	{
 	}
 		$(dest).append(
 			$("<li></li>").addClass("list-group-item").append(
-				$("<div></div>").addClass("row").attr("data-clMac", client.clMac).append(Array(
+				$("<div></div>").addClass("row").attr("id", "clDrag").attr("data-clMac", client.clMac).append(Array(
 					$("<div></div>").addClass("col-md-4").html(client.clMac),
 					$("<div></div>").addClass("col-md-4").html(client.clName).attr("id", "cMac_"+client.clMac).editable("/ajax/editname.php", { 
 						indicator : "<img src='img/indicator.gif'>",
