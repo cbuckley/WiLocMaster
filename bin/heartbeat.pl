@@ -15,7 +15,7 @@ die("STOMP Connection Failed") if $connection->command eq "ERROR";
 
 $stomp->subscribe(
 	{
-		destination             => '/queue/heartbeats',
+		destination             => '/topic/heartbeats',
 		'ack'                   => 'client',
         	'activemq.prefetchSize' => 1
       	}
@@ -41,7 +41,7 @@ while (1) {
 		$sth->execute($heartbeat->{controller}, 0);
 	}
 	my $jsonstr = $json->encode($controllers->{$heartbeat->{controller}});
-	$stomp->send({ destination => '/queue/web.heartbeats',body => $jsonstr });
+	$stomp->send({ destination => '/topic/web.heartbeats',body => $jsonstr });
 	$stomp->ack( { frame => $frame } );
 }
 
