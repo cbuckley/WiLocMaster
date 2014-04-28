@@ -57,7 +57,7 @@
         <div class="col-sm-3 col-md-2 sidebar">
           <ul class="nav nav-sidebar">
 	<?php
-		$items = array("statistics","map","logs", "clients");
+		$items = array("map","logs", "clients");
 
 		foreach($items as $item)	{
 			echo '<li><a href="index.php?go='.$item.'">'.$site['map'][$item]['menu'].'</a></li>';

@@ -43,7 +43,7 @@ $site['map'] = array(
     )
 );
 
-$go = isset($_GET['go']) ? $_GET['go'] : 'home';
+$go = isset($_GET['go']) ? $_GET['go'] : 'map';
 if (array_key_exists($go, $site['map'])) {
 	$template = (isset($site['map'][$go]['template'])) ? $site['map'][$go]['template'] : $site['defaulttemplate'];
 	render_page($template, $go, $site);
