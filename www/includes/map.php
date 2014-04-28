@@ -13,29 +13,29 @@ var image;
 var trilaterating;
 $(document).ready(function()    {
 	var mapOptions = {
-        	center: new google.maps.LatLng(52.8129216,-2.0818326),
+        	center: new google.maps.LatLng(52.8129216,-2.0818326), //Centre of the map
 	        zoom: 20
         };
-	map = new google.maps.Map(document.getElementById("map-canvas"), mapOptions);
-	image = new google.maps.MarkerImage("img/picon.png",
+	map = new google.maps.Map(document.getElementById("map-canvas"), mapOptions); //Initialise map
+	image = new google.maps.MarkerImage("img/picon.png", // Pi Icon for the controllers
 		null, 
 	        new google.maps.Point(0,0),
 	        new google.maps.Point(22, 25)
 	);
 	
-		$("#clientspane").hide();	
+		$("#clientspane").hide();//hide clients pane from view on start
 	
-		$("#clientsbutton").click(function()	{
+		$("#clientsbutton").click(function()	{ //Client button swaps to clients
 			swapdisplay("clients");
 			$(this).addClass("active");
 		});
-		$("#controllersbutton").click(function()    {
+		$("#controllersbutton").click(function()    { //Controller button swaps to controllers
                 	swapdisplay("controllers");
 			$(this).addClass("active");
         	});
 
-		function swapdisplay(disp)	{
-			if(disp == "clients")	{
+		function swapdisplay(disp)	{ //Pane swap funcion to save duplicate code on each click
+			if(disp == "clients")	{ 
 				$("#controllerspane").hide();
 				$("#controllersbutton").removeClass("active");
 				$("#clientspane").fadeIn("fast");	
@@ -47,15 +47,15 @@ $(document).ready(function()    {
 			}
 		}
 		$.each(controllers, function(k, v)      {
-        		newController(v);
+        		newController(v); //Load controllers from JSON
 		});
 		$.each(clients, function(k,v)   {
-                	newClient(v);
+                	newClient(v); // Load clients from JSON
 	        });
-		setInterval("updateControllers()", 5000);
+		setInterval("updateControllers()", 5000);//update every 5 seconds
 		setInterval("updateClients()", 5000);
 	});
-
+//Connect to stomp
 var client, url;
 url = "ws://fyp.cbuckley.com:61623/stomp";
 client = Stomp.client(url);
@@ -73,6 +73,7 @@ function startListening() {
 		client.subscribe('/topic/web.summary',summaryPackets);
 	}
 }
+//Load controllers using PHP JSON
 var controllers = 
 <?php
 $con = mysqli_connect("localhost","wiloc","q9MF2Jbed9S7DPmP","wiloc");
@@ -83,6 +84,7 @@ while($row = mysqli_fetch_array($result))       {
 }
         echo json_encode($controllers);
 ?>;
+//Load clients into JSON
 var clients =
 <?php
 $result = mysqli_query($con,"SELECT * FROM clients where clActive = 1") or die("Error: ".mysqli_error($con));
@@ -92,33 +94,34 @@ while($row = mysqli_fetch_array($result))       {
 }
         echo json_encode($clients);
 ?>;
-
+//Heartbeat receipt
 var heartbeats = function(message)	{
 	controller = JSON.parse(message.body);
-	if((controller.coId in controllers))	{
-		controller.jseen = (new Date).getTime();
-		if(controllers[controller.coId].beating == 0 || controllers[controller.coId].timing == 1)	{
-			updateControllerStatus(controller.coId, "online");
+	if((controller.coId in controllers))	{//is controller already in the list
+		controller.jseen = (new Date).getTime(); // Update local last seen time
+		if(controllers[controller.coId].beating == 0 || controllers[controller.coId].timing == 1)	{ // If the controller is offline or timing 
+			updateControllerStatus(controller.coId, "online"); //set to online as we have receievd a packet
 		}
-		controller.beating = 1;
+		controller.beating = 1; // Set beating to 1 for true
+		//Update new var with current information
 		controller.marker = controllers[controller.coId].marker;
-		controller.tricircle = controllers[controller.coId].tricircle;
-		controllers[controller.coId] = controller;
+		controller.tricircle = controllers[controller.coId].tricircle; 
+		controllers[controller.coId] = controller; // Update the current controller object with the new one (gets any new names or locations)
 	}
 	else	{
-		controller.beating = 1;
-		newController(controller);
+		controller.beating = 1;  //Beating
+		newController(controller); //Add the new controller
 	}
 	if($('*[data-controller="'+controller.coId+'"]').find("#name").html() != controller.coName)	{
 		$('*[data-controller="'+controller.coId+'"]').find("#name").html(controller.coName);
 	}
-	$('*[data-controller="'+controller.coId+'"]').find('#ping').fadeIn(500).fadeOut(500);
+	$('*[data-controller="'+controller.coId+'"]').find('#ping').fadeIn(500).fadeOut(500); // Show the heartbeat blip 
 }
 var summaryPackets = function(message)      {
         curClient = JSON.parse(message.body);
-        if((curClient.clMac in clients))    {
-		loc = getTrilateration(curClient.controllers['fnk8rjf43e'],curClient.controllers['lrhcngawjz'],curClient.controllers['Mp2H715b45']);
-		if (typeof clients[curClient.clMac].marker == "undefined") {
+        if((curClient.clMac in clients))    {//is client currently in system
+		loc = getTrilateration(curClient.controllers['fnk8rjf43e'],curClient.controllers['lrhcngawjz'],curClient.controllers['Mp2H715b45']); // Trilaterate the location using JS
+		if (typeof clients[curClient.clMac].marker == "undefined") { //if marker is not currently set then set it
 			clients[curClient.clMac].marker = new google.maps.Marker({
 				position: new google.maps.LatLng(loc.x, loc.y),
 				map: map,
@@ -126,35 +129,35 @@ var summaryPackets = function(message)      {
 			});
 		}
 		else	{
-			clients[curClient.clMac].marker.setPosition(new google.maps.LatLng(loc.x, loc.y));
+			clients[curClient.clMac].marker.setPosition(new google.maps.LatLng(loc.x, loc.y)); // if marker is set then update location
 			clients[curClient.clMac].marker.setMap(map);
 		}
         }
         else    {
-                newClient(curClient);
+                newClient(curClient); // new client if client is not in the system
         }
 	clients[curClient.clMac].beating = 1;
-        clients[curClient.clMac].jseen = (new Date).getTime();
-	updateClientStatus(curClient.clMac, "online");
-	if(curClient.clMac == trilaterating)	{
-		trilaterate(curClient);
+        clients[curClient.clMac].jseen = (new Date).getTime(); // Set JS seen time
+	updateClientStatus(curClient.clMac, "online"); // Update client to online
+	if(curClient.clMac == trilaterating)	{ //if this is the current trilaterating client
+		trilaterate(curClient); // Trilaterate the client
 	}
 }
-function trilaterate(client)	{
+function trilaterate(client)	{ // Add trilateration circles
 	$.each(client.controllers, function(k,v)	{
 		parseFloat(v.lon);
 		client.controllers.lon = parseFloat(client.controllers.lon);
 		parseFloat(client.controllers.distance);
-		if (typeof controllers[k].tricircle == "undefined") {
+		if (typeof controllers[k].tricircle == "undefined") { //initialise the circles if they dont exist
 			controllers[k].tricircle = new google.maps.Circle({
 				map: map,
 				radius: v.distance * 1000,
 				fillColor: '#AA0000',
 			});
-			controllers[k].tricircle.bindTo('center', controllers[k].marker, 'position');
+			controllers[k].tricircle.bindTo('center', controllers[k].marker, 'position'); // Bind the circle to the pi icon
 		}
 		else	{
-			controllers[k].tricircle.setRadius(v.distance *1000);
+			controllers[k].tricircle.setRadius(v.distance *1000); // update if they do exist
 			controllers[k].tricircle.setMap(map);
 		}
 	});
@@ -162,7 +165,7 @@ function trilaterate(client)	{
 function clearTrilaterate()	{
 	$.each(controllers, function(k,v)        {
 		if (typeof controllers[k].tricircle != "undefined") {
-			controllers[k].tricircle.setMap(null);
+			controllers[k].tricircle.setMap(null); // Remove the trilateration circle from the map so they are not visible
 		}
 	});
 }
@@ -180,11 +183,13 @@ function getTrilateration(position1, position2, position3) {
 	xC = earthR *(Math.cos(Math.radians(position3.lat)) * Math.cos(Math.radians(position3.lon)));
 	yC = earthR *(Math.cos(Math.radians(position3.lat)) * Math.sin(Math.radians(position3.lon)));
 	zC = earthR *(Math.sin(Math.radians(position3.lat)));
-
+	
+	//Load as vector objects
 	P1 = new Vector(xA, yA, zA);
 	P2 = new Vector(xB, yB, zB);
 	P3 = new Vector(xC, yC, zC);
     
+	//ECEF trilateration algorithm using vectors
 	var a = P2.subtract(P1);
     	var b = P2.subtract(P1).length();
 	var ex = a.divide(b);
@@ -196,10 +201,12 @@ function getTrilateration(position1, position2, position3) {
 	var d = P2.subtract(P1).length();
 	var j = ey.dot(P3.subtract(P1));
 	
+	//ECEF trilateration results in x,y,z format
 	x = (Math.pow(position1.distance,2) - Math.pow(position2.distance,2) + Math.pow(d,2))/(2*d);
 	y = ((Math.pow(position1.distance,2) - Math.pow(position3.distance,2) + Math.pow(i,2) + Math.pow(j,2))/(2*j)) - ((i/j)*x);
 	z = Math.sqrt(Math.pow(position1.distance,2) - Math.pow(x,2) - Math.pow(y,2));
 
+	//Convert to geodetic lat lon
 	var triPt = P1.add(ex.multiply(x)).add(ey.multiply(y)).add(ez.multiply(z));
 	lat = Math.toDeg(Math.asin(triPt.z / earthR));
 	lon = Math.toDeg(Math.atan2(triPt.y,triPt.x));
@@ -219,22 +226,22 @@ if (typeof(Math.toDeg) === "undefined") {
     return num * 180 / Math.PI;
   }
 }
-function updateControllers()	{
+function updateControllers()	{ // Update controllers timer sets if they have not been seen in x amount of time
 	$.each(controllers, function(k, v)      {
 		var warntime = (new Date).getTime() - 25000;
 		var deadtime = (new Date).getTime() - 40000;
         	if(v.beating == 1)	{
-			if(v.jseen < deadtime)	{
-				updateControllerStatus(v.coId, "offline");
+			if(v.jseen < deadtime)	{ //If they are > 40 seconds set to offline
+				updateControllerStatus(v.coId, "offline"); 
 			}
-			else if(v.jseen < warntime)	{
+			else if(v.jseen < warntime)	{ // if they are > 20 seconds set to timing
 				updateControllerStatus(v.coId, "timing");
 				v.timing = true;
 			} 
 		}
 	});	
 }
-function updateClients()    {
+function updateClients()    { // Update clients sets to offline or waiting depending on time of inactivity
         $.each(clients, function(k, v)      {
                 var warntime = (new Date).getTime() - 30000;
                 var deadtime = (new Date).getTime() - 120000;
@@ -250,7 +257,7 @@ function updateClients()    {
         });
 }
 
-function updateControllerStatus(controller, stat)	{
+function updateControllerStatus(controller, stat)	{ // Sets the UI elements to say offline, timing or online
 	switch (stat)	{
 	case "online":
 		$('*[data-controller="'+controller+'"]').removeClass("warning danger success").addClass("success").find("#status").html("Online");
@@ -265,7 +272,7 @@ function updateControllerStatus(controller, stat)	{
 	break;
 	}
 }
-function updateClientStatus(client, stat)       {
+function updateClientStatus(client, stat)       { //updates UI elements to set as seen,timing or waiting
         switch (stat)   {
         case "online":
 		$('#activeClients [data-clMac="'+client+'"]').find("#status").html("Seen");
@@ -283,31 +290,31 @@ function updateClientStatus(client, stat)       {
 }
 function newController(c)	{
 	var beating,status;
-	if(c.coActive == 0)	{
+	if(c.coActive == 0)	{ // If the controller is inactive
 		beating = "info";
-		status = "Unprovisioned";
+		status = "Unprovisioned"; //set to unprovisioned
 	}
 	else	{
 		if(c.beating == 1)	{
-			beating = "success";
+			beating = "success"; 
 			c.jseen = (new Date).getTime();
-			status = "Online";
+			status = "Online"; //Set to cnline if active
 		}
 		else	{
 			c.jseen = c.coSeen;
 			beating = "danger";
-			status = "Offline";
+			status = "Offline"; //set to offline if inactive
 		}
 	}
 	controllers[c.coId] = c;
-	controllers[c.coId].marker = new google.maps.Marker({
+	controllers[c.coId].marker = new google.maps.Marker({ // Set a marker for the new controller
                 position: new google.maps.LatLng(c.clLat,c.clLon),
                 point:(22,42),
                 map: map,
                 icon: image,
                 draggable:true,
         });
-	var row = $("<tr></tr>").addClass(beating).attr("data-controller", c.coId)
+	var row = $("<tr></tr>").addClass(beating).attr("data-controller", c.coId) // Add the HTML to the page for the controller
 	.append(Array(
 		$("<td></td>").html(c.coName).attr("id", "name"),
 		$("<td></td>").html(status).attr("id", "status"),
@@ -327,8 +334,8 @@ function newClient(client)      {
 ,
 			$("<td></td>").html(client.clStatus).attr("id", "status"),
 			$("<td></td>").html(client.clMac),
-			$("<td></td>").html($("<span></span>").attr("id", "curTrack").hide().addClass("glyphicon glyphicon-ok"))
-		)).click(function()	{
+			$("<td></td>").html($("<span></span>").attr("id", "curTrack").hide().addClass("glyphicon glyphicon-ok")) //Set the HTML for the client
+		)).click(function()	{ //If the client is clicked then trilaterate them and set the other client as being not trilaterating
 			if(typeof(trilaterating) != "undefined")	{
 				$('#activeClients [data-clMac="'+trilaterating+'"]').find("#curTrack").hide();	
 			}
@@ -336,7 +343,7 @@ function newClient(client)      {
 			trilaterating = client.clMac;
 			clearTrilaterate();	
 		}));
-	updateClientStatus(client.clMac, "waiting");
+	updateClientStatus(client.clMac, "waiting"); //Update the client to waiting until we receieve a summary
         clients[client.clMac] = client;
 }
 

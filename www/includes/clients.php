@@ -2,13 +2,13 @@
 <script type="text/javascript" src="jquery/jquery.jeditable.js"></script>
 <script>
 $(document).ready(function()	{
-	$( "#trackinglist, #clientslist" ).droppable({
-		drop: function( event, ui ) {
+	$( "#trackinglist, #clientslist" ).droppable({ //set jquery droppable so we can drag them
+		drop: function( event, ui ) { //when dropping a dragged client
 			$( this ).find( ".placeholder" ).remove();
 	//		$( "<li></li>" ).text( ui.draggable.text() ).appendTo( this );
 			$(this).append(ui.draggable);
-			thismac = $(ui.draggable).find("#clDrag").attr("data-clmac");
-			target = $(event.target).attr("id");
+			thismac = $(ui.draggable).find("#clDrag").attr("data-clmac"); // get the client mac that was dropped
+			target = $(event.target).attr("id"); // where were they dropped
 			var tracking;
 			if(target == "trackinglist")	{
 				tracking = 1;
@@ -17,17 +17,17 @@ $(document).ready(function()	{
 				tracking = 0;
 			}
 
-			$.getJSON( "ajax/changetracking.php", {
+			$.getJSON( "ajax/changetracking.php", { // do a ajax call to start tracking
 				tracking:tracking,
 				clmac:thismac
 			});
 		}
 	});
 	$.each(clients, function(k,v)	{
-		newClient(v);
+		newClient(v); // Initialise new clients from load
 	});
 });
-
+//dtomp initialisation
 var client, url;
 url = "ws://fyp.cbuckley.com:61623/stomp";
 client = Stomp.client(url);
@@ -45,7 +45,7 @@ function startListening() {
         }
 }
 
-
+//Load clients active from the DB
 var clients =
 <?php
 $con = mysqli_connect("localhost","wiloc","q9MF2Jbed9S7DPmP","wiloc");
@@ -67,13 +67,13 @@ var ticks = function(message)      {
 		}
         }
         else    {
-                newClient(curClient);
+                newClient(curClient); //If the client is new then we add it to the list
         }
 }
 
 function newClient(client)	{
 	var dest;
-	if(client.clActive == 1)	{
+	if(client.clActive == 1)	{ //if active then we add to the currently tracking otherwise we add to the new clients list
 		dest = "#trackinglist";
 	}
 	else	{
@@ -92,7 +92,7 @@ function newClient(client)	{
 			).draggable({
 		              appendTo: "body",
 		              helper: "clone"
-		        })
+		        }) // Create the client with the draggable jquery UI so that we can move it.
 		)
 	clients[client.clMac] = client;
 }

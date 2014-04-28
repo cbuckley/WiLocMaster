@@ -16,7 +16,7 @@ $(document).ready(function() {
           client.connect("admin", "password", function(frame) {
             client.debug("connected to Stomp");
             client.subscribe("/topic/web.logs", function(message) {
-		$("#logbox").prepend(message.body + "<br />");
+		$("#logbox").prepend(message.body + "<br />"); //add the log to the start of the log box
 	    });
           });
       }
